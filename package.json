@@ -1,0 +1,30 @@
+{
+	"name": "leviathan-worker",
+	"version": "0.0.1",
+	"description": "RESTful API to send commands to a testbot",
+	"main": "index.js",
+	"scripts": {
+		"clean": "rm -rf build",
+		"prettify": "prettier --config ./node_modules/resin-lint/config/.prettierrc --write \"{lib,test}/**/*.ts\"",
+		"test": "npm run prettify && npm run lint",
+		"lint": "resin-lint --typescript src/*",
+		"precommit": "lint-staged",
+		"build": "npm run clean && npm run prettify && tsc",
+		"start": "npm run build && node ./build/index.js"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/balena-io/leviathan-worker.git"
+	},
+	"keywords": [
+		"testbot",
+		"leviathan",
+		"worker"
+	],
+	"author": "Theodor Gherzan",
+	"license": "Apache-2.0",
+	"bugs": {
+		"url": "https://github.com/balena-io/leviathan-worker/issues"
+	},
+	"homepage": "https://github.com/balena-io/leviathan-worker#readme"
+}
