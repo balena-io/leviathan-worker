@@ -10,7 +10,10 @@
 		"lint": "resin-lint --typescript src/*",
 		"precommit": "lint-staged",
 		"build": "npm run clean && npm run prettify && tsc",
-		"start": "npm run build && node ./build/index.js"
+		"build:test": "npm run clean && tsc --project .",
+		"start": "node ./build/index.js",
+		"test:cov": "npm run build:test && TEST=true nyc mocha",
+		"test:fast": "npm run build:test && TEST=true mocha"
 	},
 	"repository": {
 		"type": "git",

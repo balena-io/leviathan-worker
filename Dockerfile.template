@@ -1,0 +1,28 @@
+FROM balenalib/%%BALENA_MACHINE_NAME%%-node AS build
+
+RUN apt-get update && \
+    apt-get install -y git python build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp/node
+
+COPY package.json .
+COPY tsconfig.json .
+COPY typings typings
+COPY lib lib
+
+RUN npm install 
+RUN npm build
+
+FROM balenalib/%%BALENA_MACHINE_NAME%%-node
+
+ENV UDEV=1
+
+WORKDIR /usr/app
+
+COPY --from=build /tmp/node/node_modules node_modules
+COPY --from=build /tmp/node/build build
+
+EXPOSE 80
+
+CMD [ "npm", "start" ]
