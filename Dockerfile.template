@@ -7,11 +7,12 @@ RUN apt-get update && \
 WORKDIR /tmp/node
 
 COPY package.json .
+COPY package-lock.json .
 COPY tsconfig.json .
 COPY typings typings
 COPY lib lib
 
-RUN npm install 
+RUN npm ci
 RUN npm build
 
 FROM balenalib/%%BALENA_MACHINE_NAME%%-node
