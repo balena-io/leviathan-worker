@@ -1,7 +1,11 @@
-import * as Bluebird from 'bluebird';
-import * as path from 'path';
-import * as express from 'express';
 import * as sdk from 'etcher-sdk';
+
+export function promiseStream(stream: NodeJS.WritableStream): Promise<void> {
+	return new Promise((resolve, reject) => {
+		stream.on('finish', resolve);
+		stream.on('error', reject);
+	});
+}
 
 export async function getDrive(
 	device: string,

@@ -131,9 +131,7 @@ describe('Testbot', () => {
 					),
 				);
 
-				await testBot.flash(
-					'https://img.balena-cloud.com/api/v1/image/raspberrypi3',
-				);
+				await testBot.flash(fs.createReadStream(join(__dirname, 'image')));
 			},
 		);
 

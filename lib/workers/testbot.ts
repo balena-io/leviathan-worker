@@ -4,10 +4,11 @@ import * as Board from 'firmata';
 import * as sdk from 'etcher-sdk';
 import * as retry from 'bluebird-retry';
 import * as visuals from 'resin-cli-visuals';
-import { getDrive } from '../helpers';
+import { promiseStream, getDrive } from '../helpers';
 import { fs } from 'mz';
 import { Mutex } from 'async-mutex';
-import { EventEmitter } from 'events';
+import { homedir } from 'os';
+import { withFile } from 'tmp-promise';
 
 /**
  * TestBot Hardware config
@@ -177,28 +178,40 @@ export class TestBot {
 	/**
 	 * Flash SD card with operating system
 	 */
-	public async flash(url: string): Promise<void> {
+	public async flash(stream: NodeJS.ReadableStream): Promise<void> {
 		await this.off();
 
 		await this.criticalSection(async () => {
-			// For linux, udev will provide us with a nice id for the testbot
-			const drive = await getDrive(await this.getDevInterface());
-			const source = await new sdk.sourceDestination.Http(url).getInnerSource();
-			const progressBar: { [key: string]: any } = {
-				flashing: new visuals.Progress('Flashing'),
-				verifying: new visuals.Progress('Validating'),
-			};
+			await withFile(
+				async ({ path, fd }) => {
+					await promiseStream(stream.pipe(fs.createWriteStream(path)));
+					// For linux, udev will provide us with a nice id for the testbot
 
-			await sdk.multiWrite.pipeSourceToDestinations(
-				source,
-				[drive],
-				(destination, error) => {
-					console.error(error);
+					const drive = await getDrive(await this.getDevInterface());
+					const source = new sdk.sourceDestination.File(
+						path,
+						sdk.sourceDestination.File.OpenFlags.Read,
+					);
+					const progressBar: { [key: string]: any } = {
+						flashing: new visuals.Progress('Flashing'),
+						verifying: new visuals.Progress('Validating'),
+					};
+
+					await sdk.multiWrite.pipeSourceToDestinations(
+						source,
+						[drive],
+						(destination, error) => {
+							console.error(error);
+						},
+						(progress: sdk.multiWrite.MultiDestinationProgress) => {
+							progressBar[progress.type].update(progress);
+						},
+						true,
+					);
 				},
-				(progress: sdk.multiWrite.MultiDestinationProgress) => {
-					progressBar[progress.type].update(progress);
+				{
+					dir: homedir(),
 				},
-				true,
 			);
 		}, arguments);
 	}

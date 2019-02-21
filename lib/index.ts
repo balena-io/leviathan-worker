@@ -41,7 +41,7 @@ async function setup(devicePath: string, port: number = 80): Promise<Server> {
 		'/dut/flash',
 		async (req: express.Request, res: express.Response) => {
 			res.status(202).send('In Progress');
-			await worker.flash(req.body.url);
+			await worker.flash(req);
 		},
 	);
 
