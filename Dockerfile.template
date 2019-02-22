@@ -8,12 +8,13 @@ WORKDIR /tmp/node
 
 COPY package.json .
 COPY package-lock.json .
+
+RUN npm ci
+
 COPY tsconfig.json .
 COPY typings typings
 COPY lib lib
-
-RUN npm ci
-RUN npm build
+RUN npm run build
 
 FROM balenalib/%%BALENA_MACHINE_NAME%%-node
 
@@ -21,6 +22,7 @@ ENV UDEV=1
 
 WORKDIR /usr/app
 
+COPY --from=build /tmp/node/package.json .
 COPY --from=build /tmp/node/node_modules node_modules
 COPY --from=build /tmp/node/build build
 
