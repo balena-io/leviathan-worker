@@ -29,19 +29,26 @@ async function setup(devicePath: string, port: number = 80): Promise<Server> {
 	app.post(
 		'/dut/on',
 		async (req: express.Request, res: express.Response): Promise<void> => {
+			await worker.powerOnDUT();
 			res.send('OK');
-			await worker.on();
 		},
 	);
 	app.post('/dut/off', async (req: express.Request, res: express.Response) => {
+		await worker.powerOffDUT();
 		res.send('OK');
-		await worker.off();
 	});
 	app.post(
 		'/dut/flash',
 		async (req: express.Request, res: express.Response) => {
-			res.status(202).send('In Progress');
-			await worker.flash(req);
+			function keepAlive() {
+				res.write('Still flashing');
+			}
+
+			worker.on('progress', keepAlive);
+			await worker.flashDUT(req);
+			worker.removeListener('progress', keepAlive);
+
+			res.end('OK');
 		},
 	);
 

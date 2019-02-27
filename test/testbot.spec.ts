@@ -79,7 +79,7 @@ describe('Testbot', () => {
 	});
 
 	it('should show the correct ON pin state', async () => {
-		await testBot.on();
+		await testBot.powerOnDUT();
 
 		expect(
 			comparePinStates(testBot['board'].pins, readyPinState),
@@ -87,7 +87,7 @@ describe('Testbot', () => {
 	});
 
 	it('should show the correct OFF pin state', async () => {
-		await testBot.off();
+		await testBot.powerOffDUT();
 
 		expect(
 			comparePinStates(testBot['board'].pins, readyPinState),
@@ -131,7 +131,7 @@ describe('Testbot', () => {
 					),
 				);
 
-				await testBot.flash(fs.createReadStream(join(__dirname, 'image')));
+				await testBot.flashDUT(fs.createReadStream(join(__dirname, 'image')));
 			},
 		);
 
@@ -150,11 +150,11 @@ describe('Testbot', () => {
 	});
 
 	it('should hook global SIGINT handler when turned ON and un-hook when turned OFF', async () => {
-		await testBot.on();
+		await testBot.powerOnDUT();
 
 		expect(process.listeners('SIGINT')).to.contain(testBot['signalHandler']);
 
-		await testBot.off();
+		await testBot.powerOffDUT();
 
 		expect(process.listeners('SIGINT')).to.not.contain(
 			testBot['signalHandler'],
@@ -162,11 +162,11 @@ describe('Testbot', () => {
 	});
 
 	it('should hook global SIGTERM handler when turned ON and un-hook when turned OFF', async () => {
-		await testBot.on();
+		await testBot.powerOnDUT();
 
 		expect(process.listeners('SIGTERM')).to.contain(testBot['signalHandler']);
 
-		await testBot.off();
+		await testBot.powerOffDUT();
 
 		expect(process.listeners('SIGTERM')).to.not.contain(
 			testBot['signalHandler'],

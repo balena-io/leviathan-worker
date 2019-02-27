@@ -4,11 +4,13 @@ import * as Board from 'firmata';
 import * as sdk from 'etcher-sdk';
 import * as retry from 'bluebird-retry';
 import * as visuals from 'resin-cli-visuals';
+import { Response } from 'express';
 import { promiseStream, getDrive } from '../helpers';
 import { fs } from 'mz';
 import { Mutex } from 'async-mutex';
 import { homedir } from 'os';
 import { withFile } from 'tmp-promise';
+import { EventEmitter } from 'events';
 
 /**
  * TestBot Hardware config
@@ -49,11 +51,10 @@ async function manageHandlers(
 }
 
 interface WorkerOptions {
-	diskDev: string;
+	diskDev?: string;
 }
-export class TestBot {
+export class TestBot extends EventEmitter {
 	private board: Board;
-	private options: WorkerOptions;
 	private mutex: Mutex;
 	private signalHandler: (signal: NodeJS.Signals) => Promise<void>;
 
@@ -61,7 +62,8 @@ export class TestBot {
 	 * Represents a TestBot
 	 */
 	// Firmata types devicePath as any, will do the same
-	constructor(devicePath: any, options?: WorkerOptions) {
+	constructor(devicePath: any, private options: WorkerOptions = {}) {
+		super();
 		this.board = new Board(devicePath);
 
 		this.board.serialConfig({
@@ -69,10 +71,8 @@ export class TestBot {
 			baud: BAUD_RATE,
 		});
 
-		if (options != null) {
-			this.options = options;
-
-			if (process.platform === 'linux' && this.options.diskDev == null) {
+		if (this.options != null) {
+			if (process.platform !== 'linux' && this.options.diskDev == null) {
 				throw new Error(
 					'We cannot automatically detect the testbot interface, please provide it manually',
 				);
@@ -162,35 +162,51 @@ export class TestBot {
 	 * Power on DUT
 	 */
 
-	private async powerOnDUT(): Promise<void> {
-		console.log('Switching testbot on...');
-		await this.sendCommand(GPIO.ENABLE_VOUT_SW, 500);
+	public async powerOnDUT(): Promise<void> {
+		await this.criticalSection(async () => {
+			console.log('Switching testbot on...');
+			await this.switchSdToDUT(5000);
+			await this.sendCommand(GPIO.ENABLE_VOUT_SW, 500);
+
+			manageHandlers(this.signalHandler, {
+				register: true,
+			});
+		}, arguments);
 	}
 
 	/**
 	 * Power off DUT
 	 */
-	private async powerOffDUT(): Promise<void> {
-		console.log('Switching testbot off...');
-		await this.sendCommand(GPIO.DISABLE_VOUT_SW, 500);
+	public async powerOffDUT(): Promise<void> {
+		await this.criticalSection(async () => {
+			console.log('Switching testbot off...');
+			await this.sendCommand(GPIO.DISABLE_VOUT_SW, 500);
+			await this.switchSdToHost(5000);
+
+			manageHandlers(this.signalHandler, {
+				register: false,
+			});
+		}, arguments);
 	}
 
 	/**
 	 * Flash SD card with operating system
 	 */
-	public async flash(stream: NodeJS.ReadableStream): Promise<void> {
-		await this.off();
+	public async flashDUT(stream: NodeJS.ReadableStream): Promise<void> {
+		await this.powerOffDUT();
 
 		await this.criticalSection(async () => {
 			await withFile(
 				async ({ path, fd }) => {
 					await promiseStream(stream.pipe(fs.createWriteStream(path)));
-					// For linux, udev will provide us with a nice id for the testbot
 
+					// For linux, udev will provide us with a nice id for the testbot
 					const drive = await getDrive(await this.getDevInterface());
-					const source = new sdk.sourceDestination.File(
-						path,
-						sdk.sourceDestination.File.OpenFlags.Read,
+					const source = new sdk.sourceDestination.ZipSource(
+						new sdk.sourceDestination.File(
+							path,
+							sdk.sourceDestination.File.OpenFlags.Read,
+						),
 					);
 					const progressBar: { [key: string]: any } = {
 						flashing: new visuals.Progress('Flashing'),
@@ -204,6 +220,7 @@ export class TestBot {
 							console.error(error);
 						},
 						(progress: sdk.multiWrite.MultiDestinationProgress) => {
+							this.emit('progress');
 							progressBar[progress.type].update(progress);
 						},
 						true,
@@ -248,38 +265,10 @@ export class TestBot {
 	}
 
 	/**
-	 * Turn on DUT
-	 */
-	public async on(): Promise<void> {
-		await this.criticalSection(async () => {
-			await this.switchSdToDUT(5000);
-			await this.powerOnDUT();
-
-			manageHandlers(this.signalHandler, {
-				register: true,
-			});
-		}, arguments);
-	}
-
-	/**
-	 * Turn off DUT
-	 */
-	public async off(): Promise<void> {
-		await this.criticalSection(async () => {
-			await this.powerOffDUT();
-			await this.switchSdToHost(5000);
-
-			manageHandlers(this.signalHandler, {
-				register: false,
-			});
-		}, arguments);
-	}
-
-	/**
 	 * Disconnect worker from our framework
 	 */
 	public async disconnect(signal?: NodeJS.Signals): Promise<void> {
-		await this.off();
+		await this.powerOffDUT();
 		this.board.serialClose(HW_SERIAL5);
 
 		if (signal != null) {

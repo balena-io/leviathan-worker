@@ -19,7 +19,7 @@ describe('API', async () => {
 	let server: Server = await setup('/path/to/fake/worker', 9999);
 
 	it('call /dut/on should turn testbot ON', async () => {
-		const spy = mockManager.mock('on');
+		const spy = mockManager.mock('powerOnDUT');
 
 		const res = await chai.request(server).post('/dut/on');
 
@@ -28,7 +28,7 @@ describe('API', async () => {
 	});
 
 	it('call /dut/off should turn testbot off', async () => {
-		const spy = mockManager.mock('off');
+		const spy = mockManager.mock('powerOffDUT');
 
 		const res = await chai.request(server).post('/dut/off');
 
@@ -37,11 +37,11 @@ describe('API', async () => {
 	});
 
 	it('call /dut/flash should turn testbot flash', async () => {
-		const spy = mockManager.mock('flash');
+		const spy = mockManager.mock('flashDUT');
 
 		const res = await chai.request(server).post('/dut/flash');
 
-		expect(res).to.have.status(202);
+		expect(res).to.have.status(200);
 		expect(spy.callCount).to.be.equal(1);
 	});
 
