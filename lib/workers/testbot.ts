@@ -9,7 +9,6 @@ import { promiseStream, getDrive } from '../helpers';
 import { fs } from 'mz';
 import { Mutex } from 'async-mutex';
 import { homedir } from 'os';
-import { withFile } from 'tmp-promise';
 import { EventEmitter } from 'events';
 
 /**
@@ -53,6 +52,7 @@ async function manageHandlers(
 interface WorkerOptions {
 	diskDev?: string;
 }
+
 export class TestBot extends EventEmitter {
 	private board: Board;
 	private mutex: Mutex;
@@ -196,39 +196,27 @@ export class TestBot extends EventEmitter {
 		await this.powerOffDUT();
 
 		await this.criticalSection(async () => {
-			await withFile(
-				async ({ path, fd }) => {
-					await promiseStream(stream.pipe(fs.createWriteStream(path)));
+			const source = new sdk.sourceDestination.StreamZipSource(
+				new sdk.sourceDestination.SingleUseStreamSource(stream),
+			);
+			// For linux, udev will provide us with a nice id for the testbot
+			const drive = await getDrive(await this.getDevInterface());
+			const progressBar: { [key: string]: any } = {
+				flashing: new visuals.Progress('Flashing'),
+				verifying: new visuals.Progress('Validating'),
+			};
 
-					// For linux, udev will provide us with a nice id for the testbot
-					const drive = await getDrive(await this.getDevInterface());
-					const source = new sdk.sourceDestination.ZipSource(
-						new sdk.sourceDestination.File(
-							path,
-							sdk.sourceDestination.File.OpenFlags.Read,
-						),
-					);
-					const progressBar: { [key: string]: any } = {
-						flashing: new visuals.Progress('Flashing'),
-						verifying: new visuals.Progress('Validating'),
-					};
-
-					await sdk.multiWrite.pipeSourceToDestinations(
-						source,
-						[drive],
-						(destination, error) => {
-							console.error(error);
-						},
-						(progress: sdk.multiWrite.MultiDestinationProgress) => {
-							this.emit('progress');
-							progressBar[progress.type].update(progress);
-						},
-						true,
-					);
+			await sdk.multiWrite.pipeSourceToDestinations(
+				source,
+				[drive],
+				(destination, error) => {
+					console.error(error);
 				},
-				{
-					dir: homedir(),
+				(progress: sdk.multiWrite.MultiDestinationProgress) => {
+					this.emit('progress');
+					progressBar[progress.type].update(progress);
 				},
+				true,
 			);
 		}, arguments);
 	}
