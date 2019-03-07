@@ -1,20 +1,13 @@
 import * as express from 'express';
-import * as bodyParser from 'body-parser';
 import TestBot from './workers/testbot';
-import { Server } from 'http';
+import * as http from 'http';
 
 async function setup(devicePath: string): Promise<express.Application> {
 	/**
 	 * Server context
 	 */
 	const app = express();
-	app.use(bodyParser.json());
-	app.use(
-		bodyParser.urlencoded({
-			// to support URL-encoded bodies
-			extended: true,
-		}),
-	);
+	const httpServer = http.createServer(app);
 
 	const worker = new TestBot(devicePath);
 
@@ -40,8 +33,14 @@ async function setup(devicePath: string): Promise<express.Application> {
 	app.post(
 		'/dut/flash',
 		async (req: express.Request, res: express.Response) => {
-			res.status(202).send('In Progress');
-			await worker.flash(req.body.url);
+			const timer = setInterval(() => {
+				res.write('Still Flashing');
+			}, httpServer.keepAliveTimeout);
+
+			await worker.flash(req);
+
+			clearInterval(timer);
+			res.status(200).end('OK');
 		},
 	);
 

@@ -1,13 +1,12 @@
-import * as _ from 'lodash';
 import * as Bluebird from 'bluebird';
 import * as Board from 'firmata';
 import * as sdk from 'etcher-sdk';
 import * as retry from 'bluebird-retry';
 import * as visuals from 'resin-cli-visuals';
+import * as Stream from 'stream';
 import { getDrive } from '../helpers';
 import { fs } from 'mz';
 import { Mutex } from 'async-mutex';
-import { EventEmitter } from 'events';
 
 /**
  * TestBot Hardware config
@@ -52,7 +51,6 @@ interface WorkerOptions {
 }
 export class TestBot {
 	private board: Board;
-	private options: WorkerOptions;
 	private mutex: Mutex;
 	private signalHandler: (signal: NodeJS.Signals) => Promise<void>;
 
@@ -60,7 +58,7 @@ export class TestBot {
 	 * Represents a TestBot
 	 */
 	// Firmata types devicePath as any, will do the same
-	constructor(devicePath: any, options?: WorkerOptions) {
+	constructor(devicePath: any, private options?: WorkerOptions) {
 		this.board = new Board(devicePath);
 
 		this.board.serialConfig({
@@ -68,9 +66,7 @@ export class TestBot {
 			baud: BAUD_RATE,
 		});
 
-		if (options != null) {
-			this.options = options;
-
+		if (this.options != null) {
 			if (process.platform === 'linux' && this.options.diskDev == null) {
 				throw new Error(
 					'We cannot automatically detect the testbot interface, please provide it manually',
@@ -104,11 +100,16 @@ export class TestBot {
 	private getDevInterface(
 		timeout: retry.Options = { max_tries: 5, interval: 5000 },
 	): Bluebird<string> {
-		return retry(() => {
-			return fs.realpath(
-				this.options.diskDev == null ? DEV_ID_LINK : this.options.diskDev,
-			);
-		}, _.assign({ throw_original: true }, timeout));
+		return retry(
+			() => {
+				return fs.realpath(
+					this.options != null && this.options.diskDev != null
+						? this.options.diskDev
+						: DEV_ID_LINK,
+				);
+			},
+			{ ...timeout, throw_original: true },
+		);
 	}
 
 	/**
@@ -177,13 +178,16 @@ export class TestBot {
 	/**
 	 * Flash SD card with operating system
 	 */
-	public async flash(url: string): Promise<void> {
+	public async flash(stream: Stream.Readable): Promise<void> {
 		await this.off();
 
 		await this.criticalSection(async () => {
+			const source = await new sdk.sourceDestination.StreamZipSource(
+				new sdk.sourceDestination.SingleUseStreamSource(stream),
+			);
 			// For linux, udev will provide us with a nice id for the testbot
 			const drive = await getDrive(await this.getDevInterface());
-			const source = await new sdk.sourceDestination.Http(url).getInnerSource();
+
 			const progressBar: { [key: string]: any } = {
 				flashing: new visuals.Progress('Flashing'),
 				verifying: new visuals.Progress('Validating'),
@@ -192,7 +196,7 @@ export class TestBot {
 			await sdk.multiWrite.pipeSourceToDestinations(
 				source,
 				[drive],
-				(destination, error) => {
+				(_destination, error) => {
 					console.error(error);
 				},
 				(progress: sdk.multiWrite.MultiDestinationProgress) => {

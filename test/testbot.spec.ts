@@ -3,6 +3,7 @@ import * as _ from 'lodash';
 import * as Bluebird from 'bluebird';
 import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
+import { withFile } from 'tmp-promise';
 import * as TestBotMocked from './mock/testbot.json';
 import * as worker from '../lib/workers/testbot';
 import * as helpers from '../lib/helpers';
@@ -11,12 +12,10 @@ import { ARDUINO, TransportStub, comparePinStates } from './testbot';
 import { Pins } from 'firmata';
 import { sourceDestination } from 'etcher-sdk';
 import { join } from 'path';
-import { tmpdir } from 'os';
-import { fs, crypto } from 'mz';
-
-const TMP_RANDOM_BYTES = 6;
+import { fs } from 'mz';
 
 chai.use(chaiAsPromised);
+
 const { expect } = chai;
 
 describe('Testbot', () => {
@@ -104,38 +103,18 @@ describe('Testbot', () => {
 	});
 
 	it('should show correct FLASH pin state', async () => {
-		await Bluebird.using(
-			Bluebird.resolve(
-				(async () => {
-					const filename = join(
-						tmpdir(),
-						`${(await crypto.randomBytes(TMP_RANDOM_BYTES)).toString(
-							'hex',
-						)}.tmp`,
-					);
+		await withFile(async file => {
+			ImportMock.mockFunction(
+				helpers,
+				'getDrive',
+				new sourceDestination.File(
+					file.path,
+					sourceDestination.File.OpenFlags.ReadWrite,
+				),
+			);
 
-					await fs.close(await fs.open(filename, 'w'));
-
-					return filename;
-				})(),
-			).disposer((filename: string) => {
-				return fs.unlink(filename);
-			}),
-			async (filename: string): Promise<void> => {
-				ImportMock.mockFunction(
-					helpers,
-					'getDrive',
-					new sourceDestination.File(
-						filename,
-						sourceDestination.File.OpenFlags.ReadWrite,
-					),
-				);
-
-				await testBot.flash(
-					'https://img.balena-cloud.com/api/v1/image/raspberrypi3',
-				);
-			},
-		);
+			await testBot.flash(fs.createReadStream(join(__dirname, 'image.zip')));
+		});
 
 		expect(
 			comparePinStates(testBot['board'].pins, readyPinState),

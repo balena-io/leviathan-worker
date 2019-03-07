@@ -14,8 +14,8 @@ chai.use(chaiAsPromised);
 const { expect } = chai;
 
 describe('API', async () => {
-	let mockManager = ImportMock.mockClass(TestBot);
-	let app: Express.Application = await setup('/path/to/fake/worker');
+	const mockManager = ImportMock.mockClass(TestBot);
+	const app: Express.Application = await setup('/path/to/fake/worker');
 
 	it('call /dut/on should turn testbot ON', async () => {
 		const spy = mockManager.mock('on');
@@ -40,7 +40,7 @@ describe('API', async () => {
 
 		const res = await chai.request(app).post('/dut/flash');
 
-		expect(res).to.have.status(202);
+		expect(res).to.have.status(200);
 		expect(spy.callCount).to.be.equal(1);
 	});
 
