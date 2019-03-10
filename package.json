@@ -13,7 +13,6 @@
 		"prettify": "prettier --config ./node_modules/resin-lint/config/.prettierrc --write \"{lib,test}/**/*.ts\"",
 		"test": "npm run prettify && npm run lint && npm run test:cov",
 		"lint": "resin-lint --typescript lib/ test/ && tsc --noEmit",
-		"precommit": "lint-staged",
 		"build": "npm run clean && npm run prettify && tsc",
 		"build:test": "npm run clean && tsc --project . && cp -r test/assets/image.zip build/test",
 		"start": "node ./build/bin",
@@ -74,5 +73,10 @@
 		"tmp-promise": "^1.0.5",
 		"ts-mock-imports": "^1.2.2",
 		"typescript": "^3.2.4"
+	},
+	"husky": {
+		"hooks": {
+			"pre-commit": "lint-staged"
+		}
 	}
 }
