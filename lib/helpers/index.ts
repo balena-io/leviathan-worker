@@ -1,6 +1,3 @@
-import * as Bluebird from 'bluebird';
-import * as path from 'path';
-import * as express from 'express';
 import * as sdk from 'etcher-sdk';
 
 export async function getDrive(
