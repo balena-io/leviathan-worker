@@ -51,7 +51,7 @@ COPY firmware/entry.sh .
 
 WORKDIR /usr/app
 
-COPY entry.sh.balena ./entry.sh
+COPY entry.sh ./entry.sh
 
 COPY --from=build /tmp/node/package.json .
 COPY --from=build /tmp/node/node_modules node_modules
