@@ -182,7 +182,7 @@ export class TestBot {
 		await this.off();
 
 		await this.criticalSection(async () => {
-			const source = await new sdk.sourceDestination.StreamZipSource(
+			const source = new sdk.sourceDestination.StreamZipSource(
 				new sdk.sourceDestination.SingleUseStreamSource(stream),
 			);
 			// For linux, udev will provide us with a nice id for the testbot
