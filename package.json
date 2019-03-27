@@ -1,6 +1,6 @@
 {
   "name": "leviathan-worker",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "RESTful API to send commands to a testbot",
   "main": "build/index.js",
   "directories": {
