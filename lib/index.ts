@@ -21,15 +21,43 @@ async function setup(devicePath: string): Promise<express.Application> {
 	 */
 	app.post(
 		'/dut/on',
-		async (req: express.Request, res: express.Response): Promise<void> => {
-			res.send('OK');
-			await worker.on();
+		async (
+			_req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			try {
+				await worker.on();
+				res.send('OK');
+			} catch (err) {
+				next(err);
+			}
 		},
 	);
-	app.post('/dut/off', async (req: express.Request, res: express.Response) => {
-		res.send('OK');
-		await worker.off();
+	app.post(
+		'/dut/off',
+		async (
+			_req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			try {
+				await worker.off();
+				res.send('OK');
+			} catch (err) {
+				next(err);
+			}
+		},
+	);
+	app.use(async function(
+		err: Error,
+		_req: express.Request,
+		res: express.Response,
+		_next: express.NextFunction,
+	) {
+		res.status(500).send(err.message);
 	});
+
 	app.post(
 		'/dut/flash',
 		async (req: express.Request, res: express.Response) => {
@@ -37,10 +65,15 @@ async function setup(devicePath: string): Promise<express.Application> {
 				res.write('Still Flashing');
 			}, httpServer.keepAliveTimeout);
 
-			await worker.flash(req);
-
-			clearInterval(timer);
-			res.status(200).end('OK');
+			try {
+				res.status(202);
+				await worker.flash(req);
+			} catch (e) {
+				res.write(e.message);
+			} finally {
+				res.end();
+				clearInterval(timer);
+			}
 		},
 	);
 
