@@ -1,6 +1,11 @@
 import * as express from 'express';
 import TestBot from './workers/testbot';
 import * as http from 'http';
+import {
+	SourceDisk,
+	MultiDestination,
+} from 'etcher-sdk/build/source-destination';
+import { multiWrite } from 'etcher-sdk';
 
 async function setup(devicePath: string): Promise<express.Application> {
 	/**
@@ -27,7 +32,7 @@ async function setup(devicePath: string): Promise<express.Application> {
 			next: express.NextFunction,
 		) => {
 			try {
-				await worker.on();
+				await worker.powerOn();
 				res.send('OK');
 			} catch (err) {
 				next(err);
@@ -42,7 +47,7 @@ async function setup(devicePath: string): Promise<express.Application> {
 			next: express.NextFunction,
 		) => {
 			try {
-				await worker.off();
+				await worker.powerOff();
 				res.send('OK');
 			} catch (err) {
 				next(err);
@@ -61,16 +66,28 @@ async function setup(devicePath: string): Promise<express.Application> {
 	app.post(
 		'/dut/flash',
 		async (req: express.Request, res: express.Response) => {
+			function onProgress(progress: multiWrite.MultiDestinationProgress): void {
+				res.write(`progress: ${JSON.stringify(progress)}`);
+			}
+
+			res.writeHead(202, {
+				'Content-Type': 'text/event-stream',
+				Connection: 'keep-alive',
+			});
+
 			const timer = setInterval(() => {
-				res.write('Still Flashing');
+				res.write('status: pending');
 			}, httpServer.keepAliveTimeout);
 
 			try {
-				res.status(202);
+				worker.on('progress', onProgress);
+
 				await worker.flash(req);
 			} catch (e) {
-				res.write(e.message);
+				res.write(`error: ${e.message}`);
 			} finally {
+				worker.removeListener('progress', onProgress);
+				res.write('status: done');
 				res.end();
 				clearInterval(timer);
 			}

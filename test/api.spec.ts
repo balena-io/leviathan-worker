@@ -21,7 +21,7 @@ describe('API', async () => {
 	const errTest = new Error('TEST ERROR');
 
 	it('call /dut/on should turn testbot ON', async () => {
-		const spy = mockManager.mock('on');
+		const spy = mockManager.mock('powerOn');
 
 		const res = await chai.request(app).post('/dut/on');
 
@@ -31,7 +31,7 @@ describe('API', async () => {
 	});
 
 	it('call /dut/on should handle errors correctly', async () => {
-		const spy = mockManager.mock('on').rejects(errTest);
+		const spy = mockManager.mock('powerOn').rejects(errTest);
 
 		const res = await chai.request(app).post('/dut/on');
 
@@ -41,7 +41,7 @@ describe('API', async () => {
 	});
 
 	it('call /dut/off should turn testbot off', async () => {
-		const spy = mockManager.mock('off');
+		const spy = mockManager.mock('powerOff');
 
 		const res = await chai.request(app).post('/dut/off');
 
@@ -51,7 +51,7 @@ describe('API', async () => {
 	});
 
 	it('call /dut/off should handle errors correctly', async () => {
-		const spy = mockManager.mock('off').rejects(errTest);
+		const spy = mockManager.mock('powerOff').rejects(errTest);
 
 		const res = await chai.request(app).post('/dut/off');
 
