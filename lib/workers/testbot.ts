@@ -7,6 +7,7 @@ import * as Stream from 'stream';
 import { getDrive } from '../helpers';
 import { fs } from 'mz';
 import { Mutex } from 'async-mutex';
+import { EventEmitter } from 'events';
 
 /**
  * TestBot Hardware config
@@ -49,7 +50,7 @@ async function manageHandlers(
 interface WorkerOptions {
 	diskDev: string;
 }
-export class TestBot {
+export class TestBot extends EventEmitter {
 	private board: Board;
 	private mutex: Mutex;
 	private signalHandler: (signal: NodeJS.Signals) => Promise<void>;
@@ -59,8 +60,9 @@ export class TestBot {
 	 */
 	// Firmata types devicePath as any, will do the same
 	constructor(devicePath: any, private options?: WorkerOptions) {
-		this.board = new Board(devicePath);
+		super();
 
+		this.board = new Board(devicePath);
 		this.board.serialConfig({
 			portId: HW_SERIAL5,
 			baud: BAUD_RATE,
@@ -179,7 +181,7 @@ export class TestBot {
 	 * Flash SD card with operating system
 	 */
 	public async flash(stream: Stream.Readable): Promise<void> {
-		await this.off();
+		await this.powerOff();
 
 		await this.criticalSection(async () => {
 			const source = new sdk.sourceDestination.StreamZipSource(
@@ -200,6 +202,7 @@ export class TestBot {
 					console.error(error);
 				},
 				(progress: sdk.multiWrite.MultiDestinationProgress) => {
+					this.emit('progress', progress);
 					progressBar[progress.type].update(progress);
 				},
 				true,
@@ -241,7 +244,7 @@ export class TestBot {
 	/**
 	 * Turn on DUT
 	 */
-	public async on(): Promise<void> {
+	public async powerOn(): Promise<void> {
 		await this.criticalSection(async () => {
 			await this.switchSdToDUT(5000);
 			await this.powerOnDUT();
@@ -255,7 +258,7 @@ export class TestBot {
 	/**
 	 * Turn off DUT
 	 */
-	public async off(): Promise<void> {
+	public async powerOff(): Promise<void> {
 		await this.criticalSection(async () => {
 			await this.powerOffDUT();
 			await this.switchSdToHost(5000);
@@ -270,7 +273,7 @@ export class TestBot {
 	 * Disconnect worker from our framework
 	 */
 	public async disconnect(signal?: NodeJS.Signals): Promise<void> {
-		await this.off();
+		await this.powerOff();
 		this.board.serialClose(HW_SERIAL5);
 
 		if (signal != null) {
