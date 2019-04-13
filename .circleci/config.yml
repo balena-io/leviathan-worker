@@ -7,6 +7,9 @@ build: &build
       name: docker-build
       command: npx dockerfile-template -d BALENA_MACHINE_NAME="intel-nuc" | docker build -f - .
   - run:
+      name: Install depedencies
+      command: sudo apt-get install libdbus-1-dev
+  - run:
       name: install-npm
       command: npm ci
   - run:

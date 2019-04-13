@@ -5,7 +5,7 @@ import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
 import { withFile } from 'tmp-promise';
 import * as TestBotMocked from './mock/testbot.json';
-import * as worker from '../lib/workers/testbot';
+import * as TestBot from '../lib/workers/testbot';
 import * as helpers from '../lib/helpers';
 import { ImportMock } from 'ts-mock-imports';
 import { ARDUINO, TransportStub, comparePinStates } from './testbot';
@@ -20,15 +20,18 @@ const { expect } = chai;
 
 describe('Testbot', () => {
 	let transport: TransportStub;
-	let testBot: worker.TestBot;
+	let testBot: TestBot.default;
 	let initialPinState: Pins[];
 	let readyPinState: Pins[];
 
 	beforeEach(async () => {
 		transport = new TransportStub();
-		testBot = new worker.TestBot(transport, {
-			diskDev: '/dev/null',
-		});
+		testBot = new TestBot.default(
+			{ devicePath: transport },
+			{
+				diskDev: '/dev/null',
+			},
+		);
 
 		// Accessing private property
 		// Firmata requires a version report before accepting any HW configuration
