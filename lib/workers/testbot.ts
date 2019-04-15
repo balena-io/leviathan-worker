@@ -47,10 +47,7 @@ async function manageHandlers(
 	}
 }
 
-interface WorkerOptions {
-	diskDev: string;
-}
-export class TestBot extends EventEmitter {
+class TestBot extends EventEmitter {
 	private board: Board;
 	private mutex: Mutex;
 	private signalHandler: (signal: NodeJS.Signals) => Promise<void>;
@@ -59,17 +56,20 @@ export class TestBot extends EventEmitter {
 	 * Represents a TestBot
 	 */
 	// Firmata types devicePath as any, will do the same
-	constructor(devicePath: any, private options?: WorkerOptions) {
+	constructor(
+		private options: { devicePath: any },
+		private workerOptions?: { diskDev: string },
+	) {
 		super();
 
-		this.board = new Board(devicePath);
+		this.board = new Board(options.devicePath);
 		this.board.serialConfig({
 			portId: HW_SERIAL5,
 			baud: BAUD_RATE,
 		});
 
-		if (this.options != null) {
-			if (process.platform === 'linux' && this.options.diskDev == null) {
+		if (this.workerOptions != null) {
+			if (process.platform === 'linux' && this.workerOptions.diskDev == null) {
 				throw new Error(
 					'We cannot automatically detect the testbot interface, please provide it manually',
 				);
@@ -105,8 +105,8 @@ export class TestBot extends EventEmitter {
 		return retry(
 			() => {
 				return fs.realpath(
-					this.options != null && this.options.diskDev != null
-						? this.options.diskDev
+					this.workerOptions != null && this.workerOptions.diskDev != null
+						? this.workerOptions.diskDev
 						: DEV_ID_LINK,
 				);
 			},
