@@ -7,7 +7,7 @@ declare global {
 			powerOn(): Promise<void>;
 			powerOff(): Promise<void>;
 			setup(): Promise<void>;
-			teardown(): Promise<void>;
+			teardown(signal?: NodeJS.Signals): Promise<void>;
 			network(configuration): Promise<void>;
 		}
 

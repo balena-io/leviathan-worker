@@ -8,7 +8,7 @@ import * as visuals from 'resin-cli-visuals';
 import * as Stream from 'stream';
 import { fs } from 'mz';
 
-import { getDrive, exec } from '../helpers';
+import { getDrive, exec, manageHandlers } from '../helpers';
 import NetworkManager, { Supported } from './nm';
 
 /**
@@ -33,22 +33,6 @@ enum PINS {
 	LED_PIN = 13,
 	SD_MUX_SEL_PIN = 28,
 	USB_MUX_SEL_PIN = 29,
-}
-
-/**
- * Signal handling function
- */
-async function manageHandlers(
-	handler: (signal: NodeJS.Signals) => Promise<void>,
-	options: { register: boolean },
-): Promise<void> {
-	for (const signal of ['SIGINT', 'SIGTERM'] as Array<NodeJS.Signals>) {
-		if (options.register) {
-			process.on(signal, handler);
-		} else {
-			process.removeListener(signal, handler);
-		}
-	}
 }
 
 class TestBot extends EventEmitter implements Leviathan.Worker {
@@ -262,10 +246,6 @@ class TestBot extends EventEmitter implements Leviathan.Worker {
 		await this.criticalSection(async () => {
 			await this.switchSdToDUT(5000);
 			await this.powerOnDUT();
-
-			manageHandlers(this.signalHandler, {
-				register: true,
-			});
 		}, arguments);
 	}
 
@@ -276,10 +256,6 @@ class TestBot extends EventEmitter implements Leviathan.Worker {
 		await this.criticalSection(async () => {
 			await this.powerOffDUT();
 			await this.switchSdToHost(5000);
-
-			manageHandlers(this.signalHandler, {
-				register: false,
-			});
 		}, arguments);
 	}
 
@@ -310,6 +286,10 @@ class TestBot extends EventEmitter implements Leviathan.Worker {
 	 * Setup testbot
 	 */
 	public async setup(): Promise<void> {
+		manageHandlers(this.teardown, {
+			register: true,
+		});
+
 		await this.criticalSection(async () => {
 			if (process.env.CI == null) {
 				await TestBot.flashFirmware();
@@ -349,9 +329,17 @@ class TestBot extends EventEmitter implements Leviathan.Worker {
 	/**
 	 * Teardown testbot
 	 */
-	public async teardown(): Promise<void> {
+	public async teardown(signal?: NodeJS.Signals): Promise<void> {
 		await this.powerOff();
 		this.board.serialClose(HW_SERIAL5);
+
+		if (signal != null) {
+			process.kill(process.pid, signal);
+		}
+
+		manageHandlers(this.teardown, {
+			register: false,
+		});
 	}
 }
 

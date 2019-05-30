@@ -4,6 +4,7 @@ import * as retry from 'bluebird-retry';
 import * as sdk from 'etcher-sdk';
 import { EventEmitter } from 'events';
 import * as libvirt from 'libvirt';
+import { manageHandlers } from '../helpers';
 import { fs } from 'mz';
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
@@ -16,6 +17,7 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 	private hypervisor: any;
 	private libvirtdProc: ChildProcess;
 	private virtlogdProc: ChildProcess;
+	private signalHandler: (signal: NodeJS.Signals) => Promise<void>;
 
 	private references: { domain?: any; network?: any; pool?: any };
 
@@ -23,6 +25,8 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 		super();
 		this.image = join(tmpdir(), 'qemu.img');
 		this.references = {};
+
+		this.signalHandler = this.teardown.bind(this);
 	}
 
 	private static generateId(): string {
@@ -335,7 +339,7 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 				await fs.stat('/var/run/libvirt/libvirt-sock');
 				await fs.stat('/var/run/libvirt/virtlogd-sock');
 			},
-			{ throw_original: true, max_tries: 10, interval: 1000 },
+			{ throw_original: true, interval: 1000, max_tries: 30 },
 		);
 		this.hypervisor = libvirt.createHypervisor('qemu:///system');
 
@@ -351,7 +355,7 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 					});
 				});
 			},
-			{ throw_original: true, interval: 1000, max_tries: 10 },
+			{ throw_original: true, interval: 1000, max_tries: 30 },
 		);
 
 		this.references.pool = await this.hypervisor.createStoragePoolAsync(
@@ -359,9 +363,13 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 				id: Qemu.generateId(),
 			}),
 		);
+
+		manageHandlers(this.signalHandler, {
+			register: true,
+		});
 	}
 
-	public async teardown(): Promise<void> {
+	public async teardown(signal?: NodeJS.Signals): Promise<void> {
 		if (this.references.domain != null) {
 			await this.references.domain.destroyAsync();
 		}
@@ -374,7 +382,16 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 			await this.references.pool.stopAsync();
 		}
 
-		this.libvirtdProc.kill('SIGKILL');
+		this.libvirtdProc.kill();
+		this.virtlogdProc.kill();
+
+		if (signal != null) {
+			process.kill(process.pid, signal);
+		}
+
+		manageHandlers(this.signalHandler, {
+			register: false,
+		});
 	}
 
 	async flash(stream: Stream.Readable): Promise<void> {
@@ -417,6 +434,7 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 	async powerOff(): Promise<void> {
 		if (this.references.domain != null) {
 			await this.references.domain.destroyAsync();
+			this.references.domain = null;
 		}
 	}
 
@@ -430,6 +448,7 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 			);
 		} else if (this.references.network != null) {
 			await this.references.network.destroyAsync();
+			this.references.network = null;
 		}
 	}
 }

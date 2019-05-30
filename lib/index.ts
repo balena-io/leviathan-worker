@@ -38,10 +38,7 @@ async function setup(): Promise<express.Application> {
 					await worker.teardown();
 				}
 
-				if (
-					req.body.type != null &&
-					req.body.type in Object.keys(workersDict)
-				) {
+				if (req.body.type != null && req.body.type in workersDict) {
 					worker = new workersDict[req.body.type as keyof workers](
 						req.body.options,
 					);

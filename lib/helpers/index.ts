@@ -69,3 +69,16 @@ export function exec(
 		});
 	});
 }
+
+export async function manageHandlers(
+	handler: (signal: NodeJS.Signals) => Promise<void>,
+	options: { register: boolean },
+): Promise<void> {
+	for (const signal of ['SIGINT', 'SIGTERM'] as Array<NodeJS.Signals>) {
+		if (options.register) {
+			process.on(signal, handler);
+		} else {
+			process.removeListener(signal, handler);
+		}
+	}
+}
