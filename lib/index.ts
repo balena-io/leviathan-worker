@@ -1,47 +1,60 @@
 import * as express from 'express';
 import * as bodyParser from 'body-parser';
-import TestBot from './workers/testbot';
 import * as http from 'http';
 import { multiWrite } from 'etcher-sdk';
-import NetworkManager from './nm';
 
-export interface Options {
-	testbot: {
-		devicePath: string;
-	};
-	network?:
-		| {
-				apWifiIface: string;
-				apWiredIface?: string;
-		  }
-		| {
-				apWifiIface?: string;
-				apWiredIface: string;
-		  };
-}
+import TestBot from './workers/testbot';
+import Qemu from './workers/qemu';
 
-interface Worker {
-	testbot: TestBot;
-	network?: NetworkManager;
-}
+type workers = { testbot: typeof TestBot; qemu: typeof Qemu };
+const workersDict: { [key in keyof workers]: workers[key] } = {
+	testbot: TestBot,
+	qemu: Qemu,
+};
 
-async function setup(options: Options): Promise<express.Application> {
+async function setup(): Promise<express.Application> {
 	/**
 	 * Server context
 	 */
 	const jsonParser = bodyParser.json();
 	const app = express();
 	const httpServer = http.createServer(app);
-	const worker: Worker = {
-		testbot: new TestBot(options.testbot),
-		network:
-			options.network != null ? new NetworkManager(options.network) : undefined,
-	};
+
+	let worker: Leviathan.Worker;
 
 	/**
-	 * Get worker ready
+	 * Select a worker route
 	 */
-	await worker.testbot.ready();
+	app.post(
+		'/select',
+		jsonParser,
+		async (
+			req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			try {
+				if (worker != null) {
+					await worker.teardown();
+				}
+
+				if (
+					req.body.type != null &&
+					req.body.type in Object.keys(workersDict)
+				) {
+					worker = new workersDict[req.body.type as keyof workers](
+						req.body.options,
+					);
+					await worker.setup();
+					res.send('OK');
+				} else {
+					res.status(500).send('Invalid worker type');
+				}
+			} catch (err) {
+				next(err);
+			}
+		},
+	);
 
 	/**
 	 * Setup DeviceUnderTest routes
@@ -54,7 +67,12 @@ async function setup(options: Options): Promise<express.Application> {
 			next: express.NextFunction,
 		) => {
 			try {
-				await worker.testbot.powerOn();
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
+				}
+				await worker.powerOn();
 				res.send('OK');
 			} catch (err) {
 				next(err);
@@ -69,7 +87,12 @@ async function setup(options: Options): Promise<express.Application> {
 			next: express.NextFunction,
 		) => {
 			try {
-				await worker.testbot.powerOff();
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
+				}
+				await worker.powerOff();
 				res.send('OK');
 			} catch (err) {
 				next(err);
@@ -85,37 +108,19 @@ async function setup(options: Options): Promise<express.Application> {
 			next: express.NextFunction,
 		) => {
 			try {
-				if (worker.network == null) {
-					res
-						.status(501)
-						.send('Network not configured on this worker. Ignoring...');
-				} else {
-					if (req.body.wireless != null) {
-						if (
-							req.body.wireless.ssid != null &&
-							req.body.wireless.psk != null
-						) {
-							await worker.network.addWirelessConnection(req.body.wireless);
-						} else {
-							throw new Error('Wireless configuration incomplete');
-						}
-					} else {
-						await worker.network.removeWirelessConnection();
-					}
-
-					if (req.body.wired != null) {
-						await worker.network.addWiredConnection(req.body.wired);
-					} else {
-						await worker.network.removeWiredConnection();
-					}
-					res.send('OK');
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
 				}
+				await worker.network(req.body);
+				res.send('OK');
 			} catch (err) {
 				next(err);
 			}
 		},
 	);
-	app.use(async function(
+	app.use(function(
 		err: Error,
 		_req: express.Request,
 		res: express.Response,
@@ -123,10 +128,15 @@ async function setup(options: Options): Promise<express.Application> {
 	) {
 		res.status(500).send(err.message);
 	});
-
 	app.post(
 		'/dut/flash',
 		async (req: express.Request, res: express.Response) => {
+			if (worker == null) {
+				throw new Error(
+					'No worker has been selected, please call /select first',
+				);
+			}
+
 			function onProgress(progress: multiWrite.MultiDestinationProgress): void {
 				res.write(`progress: ${JSON.stringify(progress)}`);
 			}
@@ -141,13 +151,13 @@ async function setup(options: Options): Promise<express.Application> {
 			}, httpServer.keepAliveTimeout);
 
 			try {
-				worker.testbot.on('progress', onProgress);
+				worker.on('progress', onProgress);
 
-				await worker.testbot.flash(req);
+				await worker.flash(req);
 			} catch (e) {
 				res.write(`error: ${e.message}`);
 			} finally {
-				worker.testbot.removeListener('progress', onProgress);
+				worker.removeListener('progress', onProgress);
 				res.write('status: done');
 				res.end();
 				clearInterval(timer);

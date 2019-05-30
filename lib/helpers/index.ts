@@ -1,3 +1,5 @@
+import * as Bluebird from 'bluebird';
+import { spawn } from 'child_process';
 import * as sdk from 'etcher-sdk';
 
 export async function getDrive(
@@ -21,4 +23,49 @@ export async function getDrive(
 	}
 
 	return drive;
+}
+
+export function exec(
+	command: string,
+	args: Array<string>,
+	cwd: string,
+): Bluebird<void> {
+	return new Bluebird((resolve, reject) => {
+		const proc = spawn(command, args, {
+			cwd: cwd,
+			stdio: 'inherit',
+		});
+
+		proc.on('error', error => {
+			reject(
+				new Error(
+					command +
+						' ' +
+						args.join(' ') +
+						' in ' +
+						cwd +
+						' encountered error ' +
+						error.message,
+				),
+			);
+		});
+
+		proc.on('exit', function(code) {
+			if (code !== 0) {
+				reject(
+					new Error(
+						command +
+							' ' +
+							args.join(' ') +
+							' in ' +
+							cwd +
+							' exited with code ' +
+							code,
+					),
+				);
+			} else {
+				resolve();
+			}
+		});
+	});
 }

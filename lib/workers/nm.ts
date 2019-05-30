@@ -1,9 +1,17 @@
 import * as dbus from 'dbus-as-promised';
 import * as os from 'os';
-import { Options } from './index';
 
 type ActiveConnection = string;
 type Connection = ActiveConnection;
+
+interface Options {
+	wireless?: {
+		psk: string;
+		ssid: string;
+		nat: boolean;
+	};
+	wired?: { nat: boolean };
+}
 
 class NetworkManager {
 	private wiredReference?: {
@@ -16,7 +24,7 @@ class NetworkManager {
 	};
 
 	constructor(
-		private options: Options['network'],
+		private options: Leviathan.Options['network'],
 		private bus = dbus.getBus('system'),
 	) {
 		// Cleanup code
@@ -124,58 +132,66 @@ class NetworkManager {
 		await con.DeactivateConnection(reference);
 	}
 
-	public async addWiredConnection(options: { nat: boolean }): Promise<void> {
-		if (this.options != null && this.options.apWiredIface != null) {
-			if (this.wiredReference) {
-				await this.removeWiredConnection();
-			}
-
-			const conn = await this.addConnection(
-				NetworkManager.wiredTemplate(options.nat ? 'shared' : 'link-local'),
-			);
-			const activeConn = await this.activateConnection(
-				conn,
-				await this.getDevice(this.options.apWiredIface),
-			);
-
-			console.log(`Wired AP; IFACE: ${this.options.apWiredIface}`);
-
-			this.wiredReference = { conn, activeConn };
-		} else {
+	public async addWiredConnection(options: { nat?: boolean }): Promise<void> {
+		if (this.options == null || this.options.apWiredIface == null) {
 			throw new Error('Wired AP unconfigured');
 		}
+
+		if (options.nat == null) {
+			throw new Error('Wired configuration incomplete');
+		}
+
+		if (this.wiredReference) {
+			await this.removeWiredConnection();
+		}
+
+		const conn = await this.addConnection(
+			NetworkManager.wiredTemplate(options.nat ? 'shared' : 'link-local'),
+		);
+		const activeConn = await this.activateConnection(
+			conn,
+			await this.getDevice(this.options.apWiredIface),
+		);
+
+		console.log(`Wired AP; IFACE: ${this.options.apWiredIface}`);
+
+		this.wiredReference = { conn, activeConn };
 	}
 
 	public async addWirelessConnection(options: {
-		ssid: string;
-		psk: string;
-		nat: boolean;
+		ssid?: string;
+		psk?: string;
+		nat?: boolean;
 	}): Promise<void> {
-		if (this.options != null && this.options.apWifiIface != null) {
-			if (this.wirelessReference) {
-				await this.removeWirelessConnection();
-			}
-
-			const conn = await this.addConnection(
-				NetworkManager.wirelessTemplate(
-					options.nat ? 'shared' : 'link-local',
-					options.ssid,
-					options.psk,
-				),
-			);
-			const activeConn = await this.activateConnection(
-				conn,
-				await this.getDevice(this.options.apWifiIface),
-			);
-
-			console.log(
-				`Wireless AP; SSID: ${options.ssid} IFACE: ${this.options.apWifiIface}`,
-			);
-
-			this.wirelessReference = { conn, activeConn };
-		} else {
+		if (this.options == null || this.options.apWifiIface == null) {
 			throw new Error('Wireless AP unconfigured');
 		}
+
+		if (options.ssid == null || options.psk == null || options.nat == null) {
+			throw new Error('Wireles configuration incomplete');
+		}
+
+		if (this.wirelessReference) {
+			await this.removeWirelessConnection();
+		}
+
+		const conn = await this.addConnection(
+			NetworkManager.wirelessTemplate(
+				options.nat ? 'shared' : 'link-local',
+				options.ssid,
+				options.psk,
+			),
+		);
+		const activeConn = await this.activateConnection(
+			conn,
+			await this.getDevice(this.options.apWifiIface),
+		);
+
+		console.log(
+			`Wireless AP; SSID: ${options.ssid} IFACE: ${this.options.apWifiIface}`,
+		);
+
+		this.wirelessReference = { conn, activeConn };
 	}
 
 	public async removeWiredConnection(): Promise<void> {
@@ -205,6 +221,10 @@ class NetworkManager {
 			process.exit(128 + os.constants.signals.SIGINT);
 		}
 	}
+}
+
+export interface Supported {
+	configuration: Options;
 }
 
 export default NetworkManager;

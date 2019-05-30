@@ -26,7 +26,7 @@ WORKDIR /tmp/node
 COPY package.json .
 COPY package-lock.json .
 
-RUN install_packages libdbus-1-dev
+RUN install_packages libdbus-1-dev libvirt-dev python
 
 RUN npm ci
 
@@ -43,17 +43,14 @@ ENV UDEV=1
 
 WORKDIR /usr/app/firmware
 
-RUN install_packages libusb-dev libdbus-1-dev
+RUN install_packages libusb-dev libdbus-1-dev qemu-system-x86 qemu-kvm libvirt-daemon-system bridge-utils iproute dnsmasq iptables ebtables
 
 COPY --from=firmware /src/usbsdmux/dist/usbsdmux-configure /usr/local/bin
 COPY --from=firmware /src/teensy_loader_cli/teensy_loader_cli /usr/local/bin
 COPY firmware/StandardFirmataPlus.ino.hex .
 COPY firmware/SDcardSwitch.ino.hex .
-COPY firmware/entry.sh .
 
 WORKDIR /usr/app
-
-COPY entry.sh ./entry.sh
 
 COPY --from=build /tmp/node/package.json .
 COPY --from=build /tmp/node/node_modules node_modules
@@ -61,4 +58,4 @@ COPY --from=build /tmp/node/build build
 
 EXPOSE 80
 
-CMD [ "./entry.sh" ]
+CMD [ "npm", "start" ]
