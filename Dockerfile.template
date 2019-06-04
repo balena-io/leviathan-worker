@@ -43,7 +43,10 @@ ENV UDEV=1
 
 WORKDIR /usr/app/firmware
 
-RUN install_packages libusb-dev libdbus-1-dev qemu-system-x86 qemu-kvm libvirt-daemon-system bridge-utils iproute dnsmasq iptables ebtables
+RUN install_packages \
+    libusb-dev libdbus-1-dev \
+    qemu-system-x86 libvirt-daemon-system bridge-utils iproute dnsmasq iptables ebtables \
+    avahi-daemon libnss-mdns
 
 COPY --from=firmware /src/usbsdmux/dist/usbsdmux-configure /usr/local/bin
 COPY --from=firmware /src/teensy_loader_cli/teensy_loader_cli /usr/local/bin
@@ -52,10 +55,12 @@ COPY firmware/SDcardSwitch.ino.hex .
 
 WORKDIR /usr/app
 
+COPY entry.sh .
+
 COPY --from=build /tmp/node/package.json .
 COPY --from=build /tmp/node/node_modules node_modules
 COPY --from=build /tmp/node/build build
 
-EXPOSE 80
+EXPOSE 80 8080
 
-CMD [ "npm", "start" ]
+CMD [ "./entry.sh" ]

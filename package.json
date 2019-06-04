@@ -48,6 +48,7 @@
 		"lodash": "^4.17.11",
 		"mz": "^2.7.0",
 		"resin-cli-visuals": "^1.4.2",
+		"ws": "^7.0.0",
 		"xml-js": "^1.6.11"
 	},
 	"devDependencies": {
@@ -64,6 +65,7 @@
 		"@types/request-promise": "^4.1.42",
 		"@types/sinon": "^7.0.11",
 		"@types/uuid": "^3.4.4",
+		"@types/ws": "^6.0.1",
 		"chai": "^4.2.0",
 		"chai-as-promised": "^7.1.1",
 		"chai-http": "^4.2.1",

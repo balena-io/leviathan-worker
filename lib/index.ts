@@ -2,9 +2,11 @@ import * as express from 'express';
 import * as bodyParser from 'body-parser';
 import * as http from 'http';
 import { multiWrite } from 'etcher-sdk';
+import { Server } from 'ws';
 
 import TestBot from './workers/testbot';
 import Qemu from './workers/qemu';
+import WsBridge from './workers/bridge';
 
 type workers = { testbot: typeof TestBot; qemu: typeof Qemu };
 const workersDict: { [key in keyof workers]: workers[key] } = {
@@ -21,6 +23,7 @@ async function setup(): Promise<express.Application> {
 	const httpServer = http.createServer(app);
 
 	let worker: Leviathan.Worker;
+	let bridge = new WsBridge();
 
 	/**
 	 * Select a worker route
@@ -110,7 +113,31 @@ async function setup(): Promise<express.Application> {
 						'No worker has been selected, please call /select first',
 					);
 				}
+
 				await worker.network(req.body);
+				res.send('OK');
+			} catch (err) {
+				next(err);
+			}
+		},
+	);
+	app.post(
+		'/dut/dut/tunnel',
+		jsonParser,
+		async (
+			req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			try {
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
+				}
+
+				await bridge.toTcp(req.body.target);
+
 				res.send('OK');
 			} catch (err) {
 				next(err);
