@@ -2,11 +2,14 @@ import * as express from 'express';
 import * as bodyParser from 'body-parser';
 import * as http from 'http';
 import { multiWrite } from 'etcher-sdk';
-import { Server } from 'ws';
+import { merge } from 'lodash';
 
+import { getStoragePath } from './helpers';
 import TestBot from './workers/testbot';
 import Qemu from './workers/qemu';
 import WsBridge from './workers/bridge';
+
+const PERSISTANT_STORAGE_LABEL = 'STORAGE';
 
 type workers = { testbot: typeof TestBot; qemu: typeof Qemu };
 const workersDict: { [key in keyof workers]: workers[key] } = {
@@ -43,7 +46,14 @@ async function setup(): Promise<express.Application> {
 
 				if (req.body.type != null && req.body.type in workersDict) {
 					worker = new workersDict[req.body.type as keyof workers](
-						req.body.options,
+						merge(
+							{
+								worker: {
+									disk: await getStoragePath(PERSISTANT_STORAGE_LABEL),
+								},
+							},
+							req.body.options,
+						),
 					);
 					await worker.setup();
 					res.send('OK');
@@ -122,7 +132,7 @@ async function setup(): Promise<express.Application> {
 		},
 	);
 	app.post(
-		'/dut/dut/tunnel',
+		'/dut/tunnel',
 		jsonParser,
 		async (
 			req: express.Request,

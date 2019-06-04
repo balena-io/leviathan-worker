@@ -21,9 +21,17 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 
 	private references: { domain?: any; network?: any; pool?: any };
 
-	constructor() {
+	constructor(options: Leviathan.Options) {
 		super();
-		this.image = join(tmpdir(), 'qemu.img');
+
+		if (
+			options != null &&
+			options.worker != null &&
+			options.worker.disk != null
+		) {
+			this.image = join(options.worker.disk, 'qemu.img');
+		}
+
 		this.references = {};
 
 		this.signalHandler = this.teardown.bind(this);
@@ -105,7 +113,7 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 				{
 					type: 'element',
 					name: 'domain',
-					attributes: { type: 'kvm', id: '1' },
+					attributes: { type: 'qemu', id: '1' },
 					elements: [
 						{
 							type: 'element',

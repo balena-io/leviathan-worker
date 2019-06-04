@@ -1,6 +1,9 @@
 import * as Bluebird from 'bluebird';
 import { spawn } from 'child_process';
 import * as sdk from 'etcher-sdk';
+import * as drivelist from 'drivelist';
+import { flatMap } from 'lodash';
+import { tmpdir } from 'os';
 
 export async function getDrive(
 	device: string,
@@ -81,4 +84,22 @@ export async function manageHandlers(
 			process.removeListener(signal, handler);
 		}
 	}
+}
+
+export async function getStoragePath(label: string): Promise<string> {
+	const drives = await drivelist.list();
+
+	const result = flatMap(
+		drives.map(drive => {
+			return drive.mountpoints;
+		}),
+	).find(mountpoint => {
+		return mountpoint.label === label;
+	});
+
+	if (result != null) {
+		return result.path;
+	}
+
+	return tmpdir();
 }
