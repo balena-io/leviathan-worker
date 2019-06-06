@@ -6,7 +6,6 @@ import { EventEmitter } from 'events';
 import * as libvirt from 'libvirt';
 import { manageHandlers } from '../helpers';
 import { fs } from 'mz';
-import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import * as visuals from 'resin-cli-visuals';
 import * as Stream from 'stream';

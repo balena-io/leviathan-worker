@@ -47,6 +47,7 @@
 		"firmata": "^2.0.0",
 		"libvirt": "^1.2.1",
 		"lodash": "^4.17.11",
+		"multicast-dns": "^7.2.0",
 		"mz": "^2.7.0",
 		"resin-cli-visuals": "^1.4.2",
 		"ws": "^7.0.0",

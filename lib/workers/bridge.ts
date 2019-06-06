@@ -1,6 +1,7 @@
 import * as Bluebird from 'bluebird';
 import * as net from 'net';
 import * as WebSocket from 'ws';
+import * as mdns from 'multicast-dns';
 
 type State = {
 	sReady: boolean;
@@ -17,7 +18,7 @@ class WsBridge {
 		this.wss = new WebSocket.Server({ port: parseInt(port) });
 	}
 
-	private static parseTarget(target: string) {
+	private static async parseTarget(target: string) {
 		let tmp;
 
 		tmp = target.split(':');
@@ -28,8 +29,40 @@ class WsBridge {
 
 		return {
 			port: parseInt(tmp[1]),
-			host: tmp[0],
+			host: await WsBridge.resolveLocalTarget(tmp[0]),
 		};
+	}
+
+	private static resolveLocalTarget(target: string): PromiseLike<string> {
+		return new Bluebird((resolve, reject) => {
+			if (/\.local$/.test(target)) {
+				const socket = mdns();
+
+				const timeout = setTimeout(() => {
+					socket.destroy();
+					reject(new Error(`Could not resolve ${target}`));
+				}, 10000);
+
+				socket.query([{ type: 'A', name: target }]);
+				socket.on('error', () => {
+					clearTimeout(timeout);
+					socket.destroy();
+					reject();
+				});
+				socket.on('response', function(response: any) {
+					for (let i = 0; i < response.answers.length; i++) {
+						const a = response.answers[i];
+						if (a.name === target && a.type === 'A') {
+							clearTimeout(timeout);
+							resolve(a.data);
+							socket.destroy();
+						}
+					}
+				});
+			} else {
+				resolve(target);
+			}
+		});
 	}
 
 	public async toTcp(target?: string) {
@@ -37,7 +70,7 @@ class WsBridge {
 			throw new Error('Invalid tunnel configuration');
 		}
 
-		const parsedTarget = WsBridge.parseTarget(target);
+		const parsedTarget = await WsBridge.parseTarget(target);
 
 		this.destroy();
 
