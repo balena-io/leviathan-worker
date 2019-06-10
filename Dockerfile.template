@@ -19,7 +19,11 @@ RUN cd usbsdmux && \
     deactivate && \
     cd -
 
-FROM balenalib/%%BALENA_MACHINE_NAME%%-node:10.14.0-stretch-build AS build
+FROM balenalib/%%BALENA_MACHINE_NAME%%-golang:1.12.4-stretch-build AS go-build
+
+RUN go get -u github.com/nadoo/glider
+
+FROM balenalib/%%BALENA_MACHINE_NAME%%-node:10.14.0-stretch-build AS node-build
 
 WORKDIR /tmp/node
 
@@ -48,6 +52,8 @@ RUN install_packages \
     qemu-system-x86 libvirt-daemon-system bridge-utils iproute dnsmasq iptables ebtables \
     libnss-mdns
 
+COPY --from=go-build /go/bin/glider /usr/local/bin
+
 COPY --from=firmware /src/usbsdmux/dist/usbsdmux-configure /usr/local/bin
 COPY --from=firmware /src/teensy_loader_cli/teensy_loader_cli /usr/local/bin
 COPY firmware/StandardFirmataPlus.ino.hex .
@@ -61,9 +67,9 @@ WORKDIR /usr/app
 
 COPY entry.sh .
 
-COPY --from=build /tmp/node/package.json .
-COPY --from=build /tmp/node/node_modules node_modules
-COPY --from=build /tmp/node/build build
+COPY --from=node-build /tmp/node/package.json .
+COPY --from=node-build /tmp/node/node_modules node_modules
+COPY --from=node-build /tmp/node/build build
 
 EXPOSE 80 8080
 

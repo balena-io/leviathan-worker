@@ -1,10 +1,11 @@
-import * as express from 'express';
 import * as bodyParser from 'body-parser';
-import * as http from 'http';
+import { spawn, ChildProcess } from 'child_process';
 import { multiWrite } from 'etcher-sdk';
+import * as express from 'express';
+import * as http from 'http';
 import { merge } from 'lodash';
 
-import { getStoragePath } from './helpers';
+import { getIpFromIface, getStoragePath } from './helpers';
 import TestBot from './workers/testbot';
 import Qemu from './workers/qemu';
 import WsBridge from './workers/bridge';
@@ -27,6 +28,13 @@ async function setup(): Promise<express.Application> {
 
 	let worker: Leviathan.Worker;
 	let bridge = new WsBridge();
+	let proxy: { proc?: ChildProcess; kill: () => void } = {
+		kill: function() {
+			if (proxy.proc != null) {
+				proxy.proc.kill();
+			}
+		},
+	};
 
 	/**
 	 * Select a worker route
@@ -149,6 +157,57 @@ async function setup(): Promise<express.Application> {
 				await bridge.toTcp(req.body.target);
 
 				res.send('OK');
+			} catch (err) {
+				next(err);
+			}
+		},
+	);
+	app.post(
+		'/proxy',
+		jsonParser,
+		async (
+			req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			// For simplicity we will delegate to glider for now
+			try {
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
+				}
+
+				if (req.body.port != null) {
+					let ip;
+
+					if (worker.state.network.wired != null) {
+						ip = {
+							ip: getIpFromIface(worker.state.network.wired),
+						};
+					}
+
+					if (worker.state.network.wireless != null) {
+						ip = {
+							ip: getIpFromIface(worker.state.network.wireless),
+						};
+					}
+
+					if (ip == null) {
+						throw new Error(
+							"DUT might not be connected to the worker's network",
+						);
+					}
+
+					process.off('exit', proxy.kill);
+					proxy.proc = spawn('glider', ['-listen', req.body.port]);
+					process.on('exit', proxy.kill);
+
+					res.send(ip);
+				} else {
+					proxy.kill();
+					res.send('OK');
+				}
 			} catch (err) {
 				next(err);
 			}

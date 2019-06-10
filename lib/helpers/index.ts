@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import * as sdk from 'etcher-sdk';
 import * as drivelist from 'drivelist';
 import { flatMap } from 'lodash';
-import { tmpdir } from 'os';
+import { networkInterfaces, tmpdir } from 'os';
 
 export async function getDrive(
 	device: string,
@@ -102,4 +102,20 @@ export async function getStoragePath(label: string): Promise<string> {
 	}
 
 	return tmpdir();
+}
+
+export function getIpFromIface(iface: string): string {
+	const ifaces = networkInterfaces();
+
+	for (const dev in ifaces) {
+		if (dev === iface) {
+			for (const details of ifaces[dev]) {
+				if (details.family === 'IPv4') {
+					return details.address;
+				}
+			}
+		}
+	}
+
+	throw new Error(`Could not find connected interface ${iface}`);
 }

@@ -132,7 +132,7 @@ class NetworkManager {
 		await con.DeactivateConnection(reference);
 	}
 
-	public async addWiredConnection(options: { nat?: boolean }): Promise<void> {
+	public async addWiredConnection(options: { nat?: boolean }): Promise<string> {
 		if (this.options == null || this.options.apWiredIface == null) {
 			throw new Error('Wired AP unconfigured');
 		}
@@ -156,13 +156,15 @@ class NetworkManager {
 		console.log(`Wired AP; IFACE: ${this.options.apWiredIface}`);
 
 		this.wiredReference = { conn, activeConn };
+
+		return this.options.apWiredIface;
 	}
 
 	public async addWirelessConnection(options: {
 		ssid?: string;
 		psk?: string;
 		nat?: boolean;
-	}): Promise<void> {
+	}): Promise<string> {
 		if (this.options == null || this.options.apWifiIface == null) {
 			throw new Error('Wireless AP unconfigured');
 		}
@@ -192,6 +194,8 @@ class NetworkManager {
 		);
 
 		this.wirelessReference = { conn, activeConn };
+
+		return this.options.apWifiIface;
 	}
 
 	public async removeWiredConnection(): Promise<void> {

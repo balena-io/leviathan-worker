@@ -19,6 +19,7 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 	private signalHandler: (signal: NodeJS.Signals) => Promise<void>;
 
 	private references: { domain?: any; network?: any; pool?: any };
+	internalState: Leviathan.WorkerState = { network: {} };
 
 	constructor(options: Leviathan.Options) {
 		super();
@@ -34,6 +35,10 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 		this.references = {};
 
 		this.signalHandler = this.teardown.bind(this);
+	}
+
+	public get state() {
+		return this.internalState;
 	}
 
 	private static generateId(): string {
@@ -401,7 +406,7 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 		});
 	}
 
-	async flash(stream: Stream.Readable): Promise<void> {
+	public async flash(stream: Stream.Readable): Promise<void> {
 		await this.powerOff();
 
 		const source = new sdk.sourceDestination.StreamZipSource(
@@ -431,21 +436,23 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 			true,
 		);
 	}
-	async powerOn(): Promise<void> {
+	public async powerOn(): Promise<void> {
 		this.references.domain = await this.hypervisor.createDomainAsync(
 			await this.getDomainConf({
 				id: Qemu.generateId(),
 			}),
 		);
 	}
-	async powerOff(): Promise<void> {
+	public async powerOff(): Promise<void> {
 		if (this.references.domain != null) {
 			await this.references.domain.destroyAsync();
-			this.references.domain = null;
+			this.references.domain = undefined;
 		}
 	}
 
-	async network(configuration: { wired?: { nat: boolean } }): Promise<void> {
+	public async network(configuration: {
+		wired?: { nat: boolean };
+	}): Promise<void> {
 		if (configuration.wired != null) {
 			this.references.network = await this.hypervisor.createNetworkAsync(
 				this.getNetworkConf({
@@ -453,9 +460,13 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 					nat: configuration.wired.nat,
 				}),
 			);
-		} else if (this.references.network != null) {
+			this.internalState.network = {
+				wired: await this.references.network.getBridgeNameAsync(),
+			};
+		} else if (this.references.network.wired != null) {
 			await this.references.network.destroyAsync();
-			this.references.network = null;
+			this.references.network = undefined;
+			this.internalState.network.wired = undefined;
 		}
 	}
 }

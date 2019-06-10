@@ -41,6 +41,7 @@ class TestBot extends EventEmitter implements Leviathan.Worker {
 	private net?: NetworkManager;
 	private disk?: string;
 	private signalHandler: (signal: NodeJS.Signals) => Promise<void>;
+	internalState: Leviathan.WorkerState = { network: {} };
 
 	/**
 	 * Represents a TestBot
@@ -68,6 +69,10 @@ class TestBot extends EventEmitter implements Leviathan.Worker {
 
 		this.mutex = new Mutex();
 		this.signalHandler = this.teardown.bind(this);
+	}
+
+	get state() {
+		return this.internalState;
 	}
 
 	static async flashFirmware() {
@@ -270,15 +275,21 @@ class TestBot extends EventEmitter implements Leviathan.Worker {
 		}
 
 		if (configuration.wireless != null) {
-			await this.net.addWirelessConnection(configuration.wireless);
+			this.internalState.network = {
+				wireless: await this.net.addWirelessConnection(configuration.wireless),
+			};
 		} else {
 			await this.net.removeWirelessConnection();
+			this.internalState.network.wireless = undefined;
 		}
 
 		if (configuration.wired != null) {
-			await this.net.addWiredConnection(configuration.wired);
+			this.internalState.network = {
+				wired: await this.net.addWirelessConnection(configuration.wired),
+			};
 		} else {
 			await this.net.removeWiredConnection();
+			this.internalState.network.wireless = undefined;
 		}
 	}
 
