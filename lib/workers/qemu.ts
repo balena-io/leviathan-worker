@@ -453,7 +453,7 @@ class Qemu extends EventEmitter implements Leviathan.Worker {
 	public async network(configuration: {
 		wired?: { nat: boolean };
 	}): Promise<void> {
-		if (configuration.wired != null) {
+		if (configuration != null && configuration.wired != null) {
 			this.references.network = await this.hypervisor.createNetworkAsync(
 				this.getNetworkConf({
 					id: Qemu.generateId(),

@@ -8,7 +8,7 @@ import { merge } from 'lodash';
 import { getIpFromIface, getStoragePath } from './helpers';
 import TestBot from './workers/testbot';
 import Qemu from './workers/qemu';
-import WsBridge from './workers/bridge';
+import PortForward from './workers/forward';
 
 const PERSISTANT_STORAGE_LABEL = 'STORAGE';
 
@@ -27,7 +27,7 @@ async function setup(): Promise<express.Application> {
 	const httpServer = http.createServer(app);
 
 	let worker: Leviathan.Worker;
-	let bridge = new WsBridge();
+	let forwarder = new PortForward();
 	let proxy: { proc?: ChildProcess; kill: () => void } = {
 		kill: function() {
 			if (proxy.proc != null) {
@@ -154,9 +154,18 @@ async function setup(): Promise<express.Application> {
 					);
 				}
 
-				await bridge.toTcp(req.body.target);
+				if (req.body.from == null && req.body.to == null) {
+					forwarder.destroy();
+					res.send('OK');
+				} else {
+					if (req.body.from == null || req.body.to == null) {
+						throw new Error('Require port and address for tunnel setting');
+					}
 
-				res.send('OK');
+					await forwarder.forward(req.body.from, req.body.to);
+
+					res.send('OK');
+				}
 			} catch (err) {
 				next(err);
 			}
@@ -178,6 +187,7 @@ async function setup(): Promise<express.Application> {
 					);
 				}
 
+				proxy.kill();
 				if (req.body.port != null) {
 					let ip;
 
@@ -194,9 +204,7 @@ async function setup(): Promise<express.Application> {
 					}
 
 					if (ip == null) {
-						throw new Error(
-							"DUT might not be connected to the worker's network",
-						);
+						throw new Error('DUT network could not be found');
 					}
 
 					process.off('exit', proxy.kill);
@@ -205,11 +213,29 @@ async function setup(): Promise<express.Application> {
 
 					res.send(ip);
 				} else {
-					proxy.kill();
 					res.send('OK');
 				}
 			} catch (err) {
 				next(err);
+			}
+		},
+	);
+	app.post(
+		'/teardown',
+		async (
+			_req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			try {
+				if (worker != null) {
+					await worker.teardown();
+				}
+				forwarder.destroy();
+				proxy.kill();
+				res.send('OK');
+			} catch (e) {
+				next(e);
 			}
 		},
 	);

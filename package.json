@@ -47,7 +47,7 @@
 		"firmata": "^2.0.0",
 		"libvirt": "^1.2.1",
 		"lodash": "^4.17.11",
-		"multicast-dns": "^7.2.0",
+		"multicast-dns": "git+https://github.com/resin-io-modules/multicast-dns#listen-on-all-interfaces",
 		"mz": "^2.7.0",
 		"resin-cli-visuals": "^1.4.2",
 		"ws": "^7.0.0",
