@@ -1,47 +1,78 @@
-import * as express from 'express';
 import * as bodyParser from 'body-parser';
-import TestBot from './workers/testbot';
-import * as http from 'http';
+import { spawn, ChildProcess } from 'child_process';
 import { multiWrite } from 'etcher-sdk';
-import NetworkManager from './nm';
+import * as express from 'express';
+import * as http from 'http';
+import { merge } from 'lodash';
 
-export interface Options {
-	testbot: {
-		devicePath: string;
-	};
-	network?:
-		| {
-				apWifiIface: string;
-				apWiredIface?: string;
-		  }
-		| {
-				apWifiIface?: string;
-				apWiredIface: string;
-		  };
-}
+import { getIpFromIface, getStoragePath } from './helpers';
+import TestBot from './workers/testbot';
+import Qemu from './workers/qemu';
+import PortForward from './workers/forward';
 
-interface Worker {
-	testbot: TestBot;
-	network?: NetworkManager;
-}
+const PERSISTANT_STORAGE_LABEL = 'STORAGE';
 
-async function setup(options: Options): Promise<express.Application> {
+type workers = { testbot: typeof TestBot; qemu: typeof Qemu };
+const workersDict: { [key in keyof workers]: workers[key] } = {
+	testbot: TestBot,
+	qemu: Qemu,
+};
+
+async function setup(): Promise<express.Application> {
 	/**
 	 * Server context
 	 */
 	const jsonParser = bodyParser.json();
 	const app = express();
 	const httpServer = http.createServer(app);
-	const worker: Worker = {
-		testbot: new TestBot(options.testbot),
-		network:
-			options.network != null ? new NetworkManager(options.network) : undefined,
+
+	let worker: Leviathan.Worker;
+	let forwarder = new PortForward();
+	let proxy: { proc?: ChildProcess; kill: () => void } = {
+		kill: function() {
+			if (proxy.proc != null) {
+				proxy.proc.kill();
+			}
+		},
 	};
 
 	/**
-	 * Get worker ready
+	 * Select a worker route
 	 */
-	await worker.testbot.ready();
+	app.post(
+		'/select',
+		jsonParser,
+		async (
+			req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			try {
+				if (worker != null) {
+					await worker.teardown();
+				}
+
+				if (req.body.type != null && req.body.type in workersDict) {
+					worker = new workersDict[req.body.type as keyof workers](
+						merge(
+							{
+								worker: {
+									disk: await getStoragePath(PERSISTANT_STORAGE_LABEL),
+								},
+							},
+							req.body.options,
+						),
+					);
+					await worker.setup();
+					res.send('OK');
+				} else {
+					res.status(500).send('Invalid worker type');
+				}
+			} catch (err) {
+				next(err);
+			}
+		},
+	);
 
 	/**
 	 * Setup DeviceUnderTest routes
@@ -54,7 +85,12 @@ async function setup(options: Options): Promise<express.Application> {
 			next: express.NextFunction,
 		) => {
 			try {
-				await worker.testbot.powerOn();
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
+				}
+				await worker.powerOn();
 				res.send('OK');
 			} catch (err) {
 				next(err);
@@ -69,7 +105,12 @@ async function setup(options: Options): Promise<express.Application> {
 			next: express.NextFunction,
 		) => {
 			try {
-				await worker.testbot.powerOff();
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
+				}
+				await worker.powerOff();
 				res.send('OK');
 			} catch (err) {
 				next(err);
@@ -85,29 +126,44 @@ async function setup(options: Options): Promise<express.Application> {
 			next: express.NextFunction,
 		) => {
 			try {
-				if (worker.network == null) {
-					res
-						.status(501)
-						.send('Network not configured on this worker. Ignoring...');
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
+				}
+
+				await worker.network(req.body);
+				res.send('OK');
+			} catch (err) {
+				next(err);
+			}
+		},
+	);
+	app.post(
+		'/dut/tunnel',
+		jsonParser,
+		async (
+			req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			try {
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
+				}
+
+				if (req.body.from == null && req.body.to == null) {
+					forwarder.destroy();
+					res.send('OK');
 				} else {
-					if (req.body.wireless != null) {
-						if (
-							req.body.wireless.ssid != null &&
-							req.body.wireless.psk != null
-						) {
-							await worker.network.addWirelessConnection(req.body.wireless);
-						} else {
-							throw new Error('Wireless configuration incomplete');
-						}
-					} else {
-						await worker.network.removeWirelessConnection();
+					if (req.body.from == null || req.body.to == null) {
+						throw new Error('Require port and address for tunnel setting');
 					}
 
-					if (req.body.wired != null) {
-						await worker.network.addWiredConnection(req.body.wired);
-					} else {
-						await worker.network.removeWiredConnection();
-					}
+					await forwarder.forward(req.body.from, req.body.to);
+
 					res.send('OK');
 				}
 			} catch (err) {
@@ -115,7 +171,75 @@ async function setup(options: Options): Promise<express.Application> {
 			}
 		},
 	);
-	app.use(async function(
+	app.post(
+		'/proxy',
+		jsonParser,
+		async (
+			req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			// For simplicity we will delegate to glider for now
+			try {
+				if (worker == null) {
+					throw new Error(
+						'No worker has been selected, please call /select first',
+					);
+				}
+
+				proxy.kill();
+				if (req.body.port != null) {
+					let ip;
+
+					if (worker.state.network.wired != null) {
+						ip = {
+							ip: getIpFromIface(worker.state.network.wired),
+						};
+					}
+
+					if (worker.state.network.wireless != null) {
+						ip = {
+							ip: getIpFromIface(worker.state.network.wireless),
+						};
+					}
+
+					if (ip == null) {
+						throw new Error('DUT network could not be found');
+					}
+
+					process.off('exit', proxy.kill);
+					proxy.proc = spawn('glider', ['-listen', req.body.port]);
+					process.on('exit', proxy.kill);
+
+					res.send(ip);
+				} else {
+					res.send('OK');
+				}
+			} catch (err) {
+				next(err);
+			}
+		},
+	);
+	app.post(
+		'/teardown',
+		async (
+			_req: express.Request,
+			res: express.Response,
+			next: express.NextFunction,
+		) => {
+			try {
+				if (worker != null) {
+					await worker.teardown();
+				}
+				forwarder.destroy();
+				proxy.kill();
+				res.send('OK');
+			} catch (e) {
+				next(e);
+			}
+		},
+	);
+	app.use(function(
 		err: Error,
 		_req: express.Request,
 		res: express.Response,
@@ -123,10 +247,15 @@ async function setup(options: Options): Promise<express.Application> {
 	) {
 		res.status(500).send(err.message);
 	});
-
 	app.post(
 		'/dut/flash',
 		async (req: express.Request, res: express.Response) => {
+			if (worker == null) {
+				throw new Error(
+					'No worker has been selected, please call /select first',
+				);
+			}
+
 			function onProgress(progress: multiWrite.MultiDestinationProgress): void {
 				res.write(`progress: ${JSON.stringify(progress)}`);
 			}
@@ -141,13 +270,13 @@ async function setup(options: Options): Promise<express.Application> {
 			}, httpServer.keepAliveTimeout);
 
 			try {
-				worker.testbot.on('progress', onProgress);
+				worker.on('progress', onProgress);
 
-				await worker.testbot.flash(req);
+				await worker.flash(req);
 			} catch (e) {
 				res.write(`error: ${e.message}`);
 			} finally {
-				worker.testbot.removeListener('progress', onProgress);
+				worker.removeListener('progress', onProgress);
 				res.write('status: done');
 				res.end();
 				clearInterval(timer);
